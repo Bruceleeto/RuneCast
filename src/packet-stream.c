@@ -287,23 +287,21 @@ int packet_stream_available_bytes(PacketStream *packet_stream, int length) {
         return 1;
     }
 
-    int bytes =
-        recv(packet_stream->socket,
-             packet_stream->available_buffer + packet_stream->available_offset +
-                 packet_stream->available_length,
-             length - packet_stream->available_length, 0);
+    int bytes = recv(packet_stream->socket,
+                     packet_stream->available_buffer + packet_stream->available_offset +
+                         packet_stream->available_length,
+                     length - packet_stream->available_length, MSG_DONTWAIT);
 
-    if (bytes < 0) {
-        bytes = 0;
-    }
-
-    packet_stream->available_length += bytes;
-
-    if (packet_stream->available_length < length) {
+    if (bytes > 0) {
+        packet_stream->available_length += bytes;
+    } else if (bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        return 0;
+    } else if (bytes == 0) {
+        packet_stream->closed = 1;
         return 0;
     }
 
-    return 1;
+    return packet_stream->available_length >= length;
 }
 
 int packet_stream_read_bytes(PacketStream *packet_stream, int length,
