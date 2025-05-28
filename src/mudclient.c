@@ -11,7 +11,8 @@
 #include <SDL/SDL.h>
 #include <ctype.h>
 #include <kos/dbglog.h>
-
+#include <dc/g1ata.h>
+#include <fat/fs_fat.h>
 
 
 KOS_INIT_FLAGS(INIT_DEFAULT | INIT_NET);
@@ -747,6 +748,38 @@ void mudclient_stop(mudclient *mud) {
         mud->stop_timeout = 4000 / mud->target_fps;
     }
 }
+
+
+static kos_blockdev_t rv;
+
+static void ide_init(void)
+{
+	uint8_t type;
+	int err;
+
+	err = g1_ata_init();
+	if (err)
+		return;
+
+	err = g1_ata_blockdev_for_partition(0, 1, &rv, &type);
+	if (err)
+		return;
+
+	printf("Found IDE partition 0\n");
+
+	err = fs_fat_init();
+	if (err)
+		return;
+
+	err = fs_fat_mount("/ide", &rv, FS_FAT_MOUNT_READONLY);
+	if (err)
+		return;
+
+	printf("Mounted IDE partition 0 to /ide\n");
+}
+
+
+
 
 void mudclient_draw_loading_progress(mudclient *mud, int percent, char *text) {
     surface_black_screen(mud->surface);
@@ -2487,20 +2520,11 @@ void mudclient_start_game(mudclient *mud) {
     mi = mallinfo();
     printf("After textures load: %d KB allocated\n", mi.uordblks / 1024);
 
-    mudclient_load_models(mud);
-
-    if (mud->error_loading_data) {
-        return;
-    }
-
+  
     mi = mallinfo();
     printf("After models load: %d KB allocated\n", mi.uordblks / 1024);
 
-    mudclient_load_maps(mud);
-
-    if (mud->error_loading_data) {
-        return;
-    }
+  
 
     mi = mallinfo();
     printf("After maps load: %d KB allocated\n", mi.uordblks / 1024);
@@ -5348,6 +5372,7 @@ int main(int argc, char **argv) {
 #endif
 
     srand(0);
+  //  ide_init();
 
     init_utility_global();
     init_surface_global();

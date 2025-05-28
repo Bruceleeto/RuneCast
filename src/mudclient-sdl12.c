@@ -1,15 +1,13 @@
 #include "mudclient.h"
-//#include <kos.h>
-//#include <dc/pvr.h>
-//#include <dc/video.h>
-//#include <dc/sound/stream.h>
 #include <SDL/SDL.h>
 #include <ctype.h>
 #include <kos/dbglog.h>
+#include <dc/maple.h>
+#include <dc/maple/controller.h>
 
 // Framebuffer dimensions
-#define FRAMEBUFFER_WIDTH 320
-#define FRAMEBUFFER_HEIGHT 240
+#define FRAMEBUFFER_WIDTH 512
+#define FRAMEBUFFER_HEIGHT 346
 
 // Keyboard Buffer
 #define DREAMCAST_KEYBOARD_BUFFER_SIZE 64
@@ -17,117 +15,18 @@
 // D-Pad movement speed (pixels per frame)
 #define DPAD_SPEED 5
 
-// We keep these static variables for tracking mouse position
-static int s_cursor_x = FRAMEBUFFER_WIDTH;
-static int s_cursor_y = FRAMEBUFFER_HEIGHT;
+// Static variables for tracking mouse position
+static int s_cursor_x = FRAMEBUFFER_WIDTH / 2;
+static int s_cursor_y = FRAMEBUFFER_HEIGHT / 2;
 
-void append_to_keyboard_buffer(char c);
-void process_backspace(void);
-
-void mudclient_poll_events(mudclient *mud) {
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        switch (event.type) {
-
-            case SDL_QUIT:
-                exit(0);
-                break;
-
-            case SDL_KEYDOWN: {
-                char char_code = -1;
-                int code = -1;
-                get_sdl_keycodes(&event.key.keysym, &char_code, &code);
-                if (code != -1) {
-                    dbglog(DBG_INFO, "Key pressed: %d (%c)\n", code, char_code);
-                    if (char_code != -1 && isprint(char_code)) {
-                        append_to_keyboard_buffer(char_code);
-                    } else if (code == SDLK_BACKSPACE) {
-                        process_backspace();
-                    }
-                    mudclient_key_pressed(mud, code, char_code);
-                }
-                break;
-            }
-
-            case SDL_KEYUP: {
-                char char_code = -1;
-                int code = -1;
-                get_sdl_keycodes(&event.key.keysym, &char_code, &code);
-                if (code != -1) {
-                    dbglog(DBG_INFO, "Key released: %d\n", code);
-                    mudclient_key_released(mud, code);
-                }
-                break;
-            }
-
-            case SDL_MOUSEMOTION: {
-                printf("xrel=%d, yrel=%d\n", event.motion.xrel, event.motion.yrel); //uncomment to spam mouse coords if you're into that
-/*                s_cursor_x += event.motion.xrel;
-                s_cursor_y += event.motion.yrel;
-                mudclient_mouse_moved(mud, s_cursor_x, s_cursor_y);*/
-                break;
-            }
-
-            case SDL_MOUSEBUTTONDOWN:
-                if (event.button.button == 4) { // Scroll up
-                    mud->mouse_scroll_delta = -1;
-                } else if (event.button.button == 5) { // Scroll down
-                    mud->mouse_scroll_delta = 1;
-                } else {
-                    mudclient_mouse_pressed(mud, event.button.x, event.button.y,
-                                            event.button.button);
-                }
-                break;
-
-            case SDL_MOUSEBUTTONUP:
-                mudclient_mouse_released(mud, event.button.x, event.button.y,
-                                         event.button.button);
-                break;
-
-            case SDL_JOYAXISMOTION: {
-                // Joystick movements also update the same cursor
-                if (event.jaxis.axis == 0) { // Left Stick X-axis
-                    s_cursor_x += (int)((event.jaxis.value / 32767.0f) * DPAD_SPEED);
-                } else if (event.jaxis.axis == 1) { // Left Stick Y-axis
-                    s_cursor_y += (int)((event.jaxis.value / 32767.0f) * DPAD_SPEED);
-                }
-
-                // Notify game
-                mudclient_mouse_moved(mud, s_cursor_x, s_cursor_y);
-                break;
-            }
-
-            case SDL_JOYBUTTONDOWN:
-                // Use the internal cursor location for clicks
-                if (event.jbutton.button == 0) { // A => left
-                    mudclient_mouse_pressed(mud, s_cursor_x, s_cursor_y, 1);
-                } else if (event.jbutton.button == 1) { // B => right
-                    mudclient_mouse_pressed(mud, s_cursor_x, s_cursor_y, 3);
-                }
-                break;
-
-            case SDL_JOYBUTTONUP:
-                if (event.jbutton.button == 0) {
-                    mudclient_mouse_released(mud, s_cursor_x, s_cursor_y, 1);
-                } else if (event.jbutton.button == 1) {
-                    mudclient_mouse_released(mud, s_cursor_x, s_cursor_y, 3);
-                }
-                break;
-
-            default:
-                break;
-        } // end switch
-    } // end while (SDL_PollEvent)
-
-    // Final boundary check after all events TODO: See if we even need this
-/*    if (s_cursor_x < 0) s_cursor_x = 0;
-    if (s_cursor_x >= FRAMEBUFFER_WIDTH)  s_cursor_x = FRAMEBUFFER_WIDTH - 1;
-    if (s_cursor_y < 0) s_cursor_y = 0;
-    if (s_cursor_y >= FRAMEBUFFER_HEIGHT) s_cursor_y = FRAMEBUFFER_HEIGHT - 1;*/
-}
-
+// Keyboard buffer
 char dreamcast_keyboard_buffer[DREAMCAST_KEYBOARD_BUFFER_SIZE];
 int keyboard_buffer_pos = 0;
+
+// Function declarations
+void append_to_keyboard_buffer(char c);
+void process_backspace(void);
+void poll_dreamcast_controller(mudclient *mud);
 
 void reset_keyboard_buffer() {
     memset(dreamcast_keyboard_buffer, 0, DREAMCAST_KEYBOARD_BUFFER_SIZE);
@@ -149,6 +48,144 @@ void process_backspace() {
     }
 }
 
+void poll_dreamcast_controller(mudclient *mud) {
+    maple_device_t *cont;
+    cont_state_t *state;
+    
+    cont = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
+    if(cont) {
+        state = (cont_state_t *)maple_dev_status(cont);
+        if(state) {
+            // Handle D-pad for mouse movement
+if(state->buttons & CONT_DPAD_UP) {
+    s_cursor_y -= DPAD_SPEED;
+}
+            if(state->buttons & CONT_DPAD_DOWN) {
+                s_cursor_y += DPAD_SPEED;
+
+            }
+            if(state->buttons & CONT_DPAD_LEFT) {
+                s_cursor_x -= DPAD_SPEED;
+
+            }
+            if(state->buttons & CONT_DPAD_RIGHT) {
+                s_cursor_x += DPAD_SPEED;
+
+            }
+            
+            // Boundary check
+            if(s_cursor_x < 0) s_cursor_x = 0;
+            if(s_cursor_x >= FRAMEBUFFER_WIDTH) s_cursor_x = FRAMEBUFFER_WIDTH - 1;
+            if(s_cursor_y < 0) s_cursor_y = 0;
+            if(s_cursor_y >= FRAMEBUFFER_HEIGHT) s_cursor_y = FRAMEBUFFER_HEIGHT - 1;
+            
+            // Update mouse position
+            mudclient_mouse_moved(mud, s_cursor_x, s_cursor_y);
+            SDL_WarpMouse(s_cursor_x, s_cursor_y);
+
+            // Handle button presses for mouse clicks
+            static int a_pressed = 0;
+            static int b_pressed = 0;
+            
+            // A button = left click
+            if(state->buttons & CONT_A) {
+                if(!a_pressed) {
+                    mudclient_mouse_pressed(mud, s_cursor_x, s_cursor_y, 1);
+                    a_pressed = 1;
+                }
+            } else {
+                if(a_pressed) {
+                    mudclient_mouse_released(mud, s_cursor_x, s_cursor_y, 1);
+                    a_pressed = 0;
+                }
+            }
+            
+            // B button = right click
+            if(state->buttons & CONT_B) {
+                if(!b_pressed) {
+                    mudclient_mouse_pressed(mud, s_cursor_x, s_cursor_y, 3);
+                    b_pressed = 1;
+                }
+            } else {
+                if(b_pressed) {
+                    mudclient_mouse_released(mud, s_cursor_x, s_cursor_y, 3);
+                    b_pressed = 0;
+                }
+            }
+            
+            // L/R triggers for scrolling
+            if(state->ltrig > 10) {
+                mud->mouse_scroll_delta = -1;
+            }
+            if(state->rtrig > 10) {
+                mud->mouse_scroll_delta = 1;
+            }
+        }
+    }
+}
+
+void mudclient_poll_events(mudclient *mud) {
+    // Poll Dreamcast controller first
+    poll_dreamcast_controller(mud);
+    
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+
+            case SDL_QUIT:
+                exit(0);
+                break;
+
+            case SDL_KEYDOWN: {
+                char char_code = -1;
+                int code = -1;
+                get_sdl_keycodes(&event.key.keysym, &char_code, &code);
+                if (code != -1) {
+                    dbglog(DBG_INFO, "Key pressed: %d (%c)\n", code, char_code);
+                    if (char_code != -1 && isprint(char_code)) {
+                        append_to_keyboard_buffer(char_code);
+                    } else if (code == SDLK_BACKSPACE) {
+                        process_backspace();
+                    }
+                    mudclient_key_pressed(mud, code, char_code);
+                }
+
+                // Toggle FPS display
+                if (event.key.keysym.sym == SDLK_F2) {
+                    mud->options->display_fps = !mud->options->display_fps;
+                }
+                break;
+            }
+
+            case SDL_KEYUP: {
+                char char_code = -1;
+                int code = -1;
+                get_sdl_keycodes(&event.key.keysym, &char_code, &code);
+                if (code != -1) {
+                    dbglog(DBG_INFO, "Key released: %d\n", code);
+                    mudclient_key_released(mud, code);
+                }
+                break;
+            }
+
+#ifndef SDL12
+            case SDL_WINDOWEVENT:
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                    mudclient_on_resize(mud);
+                }
+                break;
+#else
+            case SDL_VIDEORESIZE:
+                mudclient_sdl1_on_resize(mud, event.resize.w, event.resize.h);
+                break;
+#endif
+
+            default:
+                break;
+        } // end switch
+    } // end while (SDL_PollEvent)
+}
+
 void mudclient_start_application(mudclient *mud, char *title) {
     dbglog(DBG_INFO, "Mudclient initialized for Dreamcast\n");
     int init = SDL_INIT_VIDEO | SDL_INIT_TIMER;
@@ -166,7 +203,6 @@ void mudclient_start_application(mudclient *mud, char *title) {
 #elif defined(RENDER_GL)
     mud->screen = SDL_SetVideoMode(mud->game_width, mud->game_height, 16,
                                    SDL_OPENGL | SDL_FULLSCREEN);
-//#endif
 #endif
 }
 

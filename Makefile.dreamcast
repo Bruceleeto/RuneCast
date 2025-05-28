@@ -15,7 +15,7 @@ SRC += src/lib/rsa/rsa-tiny.c
 CFLAGS += -fwrapv -std=gnu99 -DRENDER_SW -DSDL_MAIN_HANDLED -DREVISION_177
 
 # Linker Flags (Common)
-LDFLAGS += -L$(KOS_BASE)/addons/lib/$(KOS_ARCH) -lppp -lm
+LDFLAGS += -L$(KOS_BASE)/addons/lib/$(KOS_ARCH)  -lkosfat  -lm
 
 # SDL Configuration
 ifdef SDL2
