@@ -2378,12 +2378,19 @@ void mudclient_update_fov(mudclient *mud) {
 }
 #endif
 
+
+#include <malloc.h>
+
+
 void mudclient_start_game(mudclient *mud) {
     mudclient_load_game_config(mud);
 
     if (mud->error_loading_data) {
         return;
     }
+
+    struct mallinfo mi = mallinfo();
+    printf("After config load: %d KB allocated\n", mi.uordblks / 1024);
 
     mudclient_set_target_fps(mud, 50);
 
@@ -2434,11 +2441,17 @@ void mudclient_start_game(mudclient *mud) {
         return;
     }
 
+    mi = mallinfo();
+    printf("After media load: %d KB allocated\n", mi.uordblks / 1024);
+
     mudclient_load_entities(mud);
 
     if (mud->error_loading_data) {
         return;
     }
+
+    mi = mallinfo();
+    printf("After entities load: %d KB allocated\n", mi.uordblks / 1024);
 
     mud->scene = malloc(sizeof(Scene));
     if (mud->options->lowmem) {
@@ -2471,17 +2484,26 @@ void mudclient_start_game(mudclient *mud) {
         return;
     }
 
+    mi = mallinfo();
+    printf("After textures load: %d KB allocated\n", mi.uordblks / 1024);
+
     mudclient_load_models(mud);
 
     if (mud->error_loading_data) {
         return;
     }
 
+    mi = mallinfo();
+    printf("After models load: %d KB allocated\n", mi.uordblks / 1024);
+
     mudclient_load_maps(mud);
 
     if (mud->error_loading_data) {
         return;
     }
+
+    mi = mallinfo();
+    printf("After maps load: %d KB allocated\n", mi.uordblks / 1024);
 
     if (mud->options->members && !mud->options->lowmem) {
         mudclient_load_sounds(mud);
@@ -2490,6 +2512,9 @@ void mudclient_start_game(mudclient *mud) {
     if (mud->error_loading_data) {
         return;
     }
+
+    mi = mallinfo();
+    printf("After sounds load: %d KB allocated\n", mi.uordblks / 1024);
 
     mudclient_draw_loading_progress(mud, 100, "Starting game...");
     mudclient_create_message_tabs_panel(mud);
@@ -2506,8 +2531,10 @@ void mudclient_start_game(mudclient *mud) {
 
     free(surface_texture_pixels);
     surface_texture_pixels = NULL;
-}
 
+    mi = mallinfo();
+    printf("Final memory usage: %d KB allocated\n", mi.uordblks / 1024);
+}
 GameModel *mudclient_create_wall_object(mudclient *mud, int x, int y,
                                         int direction, int id, int count) {
     int x1 = x;

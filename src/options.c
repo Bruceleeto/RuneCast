@@ -78,7 +78,7 @@ void options_set_defaults(Options *options) {
     options->touch_menu_delay = 350;
 
     /* display */
-    options->lowmem = 0;
+    options->lowmem = 1;
     options->interlace = 0;
     options->flicker = 1;
     options->fog_of_war = 0;
@@ -151,7 +151,7 @@ void options_set_vanilla(Options *options) {
     options->touch_menu_delay = 350;
 
     /* display */
-    options->lowmem = 0;
+    options->lowmem = 1;
     options->interlace = 0;
     options->flicker = 1;
     options->fog_of_war = 0;
